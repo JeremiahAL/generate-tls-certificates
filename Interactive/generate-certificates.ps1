@@ -181,7 +181,6 @@ function Create-New-RootCA{
 	distinguished_name  = req_distinguished_name
 	x509_extensions		= ext
 	prompt              = no
-	output_password     = `"$password`"
 	default_bits        = $KeySize
 
 	[ req_distinguished_name ]
@@ -375,6 +374,7 @@ function Generate-NodeCertificates {
 function Generate-Admin-Certificate{
 	param(
         [string]$password,
+        [string]$adminKeyPassword,
         [string]$rootCAcrt,
         [string]$rootCAkey
     )
@@ -382,7 +382,6 @@ function Generate-Admin-Certificate{
 	"[ req ]
 	distinguished_name  = req_distinguished_name
 	prompt              = no
-	output_password     = `"$password`"
 	default_bits        = $KeySize
 
 	[ req_distinguished_name ]
@@ -396,10 +395,10 @@ function Generate-Admin-Certificate{
 	& "$openssl" "genrsa" "-out" "admin_key.tmp" "$keysize"
 
 	# convert to PKCS8 format
-	& "$openssl" "pkcs8" "-inform" "PEM" "-in" "admin_key.tmp" "-topk8" "-v1" "PBE-SHA1-3DES" "-out" "admin-key.pem"
+	& "$openssl" "pkcs8" "-inform" "PEM" "-in" "admin_key.tmp" "-topk8" "-v1" "PBE-SHA1-3DES" "-out" "admin-key.pem" "-passout" "pass:$adminKeyPassword"
 
 	# generate signing request
-	& "$openssl" "req" "-new" "-key" "admin-key.pem" "-out" "admin.csr" "-config" "Admin.conf"
+	& "$openssl" "req" "-new" "-key" "admin-key.pem" "-out" "admin.csr" "-config" "Admin.conf" "-passin" "pass:$adminKeyPassword"
 
 	# sign the cert with the RootCA
 	& "$openssl" "x509" "-req" "-CA" $rootCAcrt "-CAkey" $rootCAkey "-in" "admin.csr" "-out" "admin.pem" "-days" "$Validity" "-CAcreateserial" "-passin" "pass:$password"
