@@ -24,12 +24,9 @@ class Config {
     [string] GetOrganization() {
 		$organizationInput = ""
 		while ($true) {
-    		$organizationInput = Read-Host "Which instance are you generating certificates for? [Default: Cassandra, Options: Cassandra|Elastic|OpenSearch|NATS|DataMiner]"
-			if($organizationInput -eq ""){
-				$organizationInput = "Cassandra"
-			}
-    		if($organizationInput -notin @("Cassandra","Elastic","OpenSearch", "NATS", "DataMiner")){
-    			Write-Host -ForegroundColor red "Invalid input: Instance should be either Cassandra, Elastic, OpenSearch, NATS, or DataMiner"
+    		$organizationInput = Read-Host "Which instance are you generating certificates for? [Options: Cassandra|OpenSearch|DataMiner|NATS]"
+    		if($organizationInput -notin @("Cassandra","OpenSearch","DataMiner","NATS")){
+    			Write-Host -ForegroundColor red "Invalid input: Instance should be either Cassandra, OpenSearch, DataMiner, or NATS"
 			}else{
 				break
 			}
@@ -138,15 +135,13 @@ function Get-ValidPath {
     )
     
     $path = $defaultPath
-    while ($true) {
-        Write-Host $tooltip
-        $path = Read-Host "Please enter the absolute path to the $file"
-		if(-not $path -Contains $file -or $path -eq "" -or -not (Test-Path $path -PathType Leaf)){
-			 $path = Read-Host "Invalid path. Please enter the absolute path to the $file"
-		}else{
-			break
-		}
-    }
+    Write-Host $tooltip
+    $path = Read-Host "Please enter the absolute path to the $file"
+	$path = $path.Trim('"', "'")
+	while($path -eq "" -or (Split-Path $path -Leaf) -ine $file -or -not (Test-Path $path -PathType Leaf)){
+		$path = Read-Host "Invalid path. Please enter the absolute path to the $file"
+		$path = $path.Trim('"', "'")
+	}
 
 	if($path -eq ""){
 		Write-Host "Invalid path to $file"
@@ -198,10 +193,10 @@ function Create-New-RootCA{
 	basicConstraints = critical,CA:TRUE
 	keyUsage                = critical, keyCertSign, cRLSign
 	subjectKeyIdentifier    = hash
-	authorityKeyIdentifier  = keyid:always, issuer" | Out-File -Encoding "UTF8" rootCA.conf
+	authorityKeyIdentifier  = keyid:always, issuer" | Out-File -Encoding "UTF8" DataminerRootCA.conf
 
-	# Create a new Root CA certificate and store the private key in rootCA.key, public key in rootCA.crt
-	& "$openssl" "req" "-config" "rootCA.conf" "-new" "-x509" "-keyout" "rootCA.key" "-out" "rootCA.crt" "-days" "$Validity" "-passout" "pass:$password"
+	# Create a new Root CA certificate and store the private key in DataminerRootCA.key, public key in DataminerRootCA.crt
+	& "$openssl" "req" "-config" "DataminerRootCA.conf" "-new" "-x509" "-keyout" "DataminerRootCA.key" "-out" "DataminerRootCA.crt" "-days" "$Validity" "-passout" "pass:$password"
 }
 
 # Function to generate root certificate
@@ -215,12 +210,12 @@ function Generate-RootCertificate {
 
     $useExisting = Read-Host "Do you want to use an existing root certificate? [Default=y, Option y|n]"
 	if ($useExisting -ine "n") {
-        $rootCAcrt =  Get-ValidPath -defaultPath "C:\absolute\path\to\rootCA.crt" -file "rootCA.crt" -tooltip $null
-		$rootCAkey =  Get-ValidPath -defaultPath "C:\absolute\path\to\rootCA.key" -file "rootCA.key" -tooltip $null
+        $rootCAcrt =  Get-ValidPath -defaultPath "C:\absolute\path\to\DataminerRootCA.crt" -file "DataminerRootCA.crt" -tooltip $null
+		$rootCAkey =  Get-ValidPath -defaultPath "C:\absolute\path\to\DataminerRootCA.key" -file "DataminerRootCA.key" -tooltip $null
 
 		$rootCApassword = ""
 		while ($rootCApassword -eq "") {
-			$rootCApassword = Read-Host "Please enter the password to the rootCA.key file"
+			$rootCApassword = Read-Host "Please enter the password to the DataminerRootCA.key file"
 
 			if ($rootCApassword -eq "") {
 				Write-Output "Invalid password. Please enter a valid password."
@@ -230,7 +225,7 @@ function Generate-RootCertificate {
 	}else{
 		$generatedPassword = Generate-Password -ArtifactDescription "root CA private key"
 		Create-New-RootCA -password $generatedPassword
-        return [RootCA]::new("rootCA.crt", "rootCA.key", $generatedPassword)
+        return [RootCA]::new("DataminerRootCA.crt", "DataminerRootCA.key", $generatedPassword)
 	}
 }
 
@@ -346,7 +341,7 @@ function Generate-NodeCertificates {
 		# Write-Host "Creating public truststore for clients"
 		# & "$keytool" "-keystore" "$i-public-truststore.jks" "-alias" "$i" "-importcert" "-file" "$i-public-key.cer" "-keypass" "$password" "-storepass" "$password" "-noprompt"
 		
-		# Convert to PKCS#12, usable for ElasticSearch/OpenSearch and DataMiner HTTPS
+		# Convert to PKCS#12, usable for OpenSearch and DataMiner HTTPS
 		Write-Host "Creating PKCS#12 from JKS for $i"
 		& "$keytool" "-importkeystore" "-srckeystore" "$i-node-keystore.jks" "-destkeystore" "$i-node-keystore.p12" "-srcstoretype" "JKS" "-deststoretype" "PKCS12" "-srcstorepass" "$keystorePassword" "-deststorepass" "$keystorePassword"
 		
@@ -486,7 +481,7 @@ function Generate-Password {
 # Main Function
 function Main{
     # Get executables phase
-	$keytool = Get-ValidPath -defaultPath "C:\absolute\path\to\keytool.exe" -file "keytool.exe" -tooltip "It is recommended to use the keytool executable provided with cassandra/elastic/opensearch."
+	$keytool = Get-ValidPath -defaultPath "C:\absolute\path\to\keytool.exe" -file "keytool.exe" -tooltip "It is recommended to use the keytool executable provided with Cassandra/OpenSearch."
 	$openssl = Get-ValidPath -defaultPath "C:\absolute\path\to\openssl.exe" -file "openssl.exe" -tooltip $null
 
     # Cleanup phase
@@ -494,7 +489,7 @@ function Main{
 	Clean-WorkingDirectory
 
 	# Configuration phase
-	Write-Host "Starting Cassandra/Elastic/OpenSearch/NATS TLS encryption configuration..."
+	Write-Host "Starting Cassandra/OpenSearch/DataMiner/NATS TLS encryption configuration..."
     $config = [Config]::new()
     $Organization = $config.GetOrganization()
     $ClusterName = $config.GetClusterName()
