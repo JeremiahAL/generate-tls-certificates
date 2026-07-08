@@ -401,7 +401,7 @@ function Generate-Admin-Certificate{
 	& "$openssl" "genrsa" "-out" "admin_key.tmp" "$keysize"
 
 	# convert to PKCS8 format
-	& "$openssl" "pkcs8" "-inform" "PEM" "-in" "admin_key.tmp" "-topk8" "-nocrypt" "-v1" "PBE-SHA1-3DES" "-out" "admin-key.pem"
+	& "$openssl" "pkcs8" "-inform" "PEM" "-in" "admin_key.tmp" "-topk8" "-v1" "PBE-SHA1-3DES" "-out" "admin-key.pem"
 
 	# generate signing request
 	& "$openssl" "req" "-new" "-key" "admin-key.pem" "-out" "admin.csr" "-config" "Admin.conf"
