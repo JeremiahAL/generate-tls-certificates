@@ -190,13 +190,15 @@ function Create-New-RootCA{
 	default_bits        = $KeySize
 
 	[ req_distinguished_name ]
-	C     = BE
-	O     = $Organization
-	CN    = rootCA
-	OU    = `"$ClusterName`"
+	C     = US
+	O     = USEI
+	CN    = DataminerRootCA
 	
 	[ ext ]
-	basicConstraints = critical,CA:TRUE" | Out-File -Encoding "UTF8" rootCA.conf
+	basicConstraints = critical,CA:TRUE
+	keyUsage                = critical, keyCertSign, cRLSign
+	subjectKeyIdentifier    = hash
+	authorityKeyIdentifier  = keyid:always, issuer" | Out-File -Encoding "UTF8" rootCA.conf
 
 	# Create a new Root CA certificate and store the private key in rootCA.key, public key in rootCA.crt
 	& "$openssl" "req" "-config" "rootCA.conf" "-new" "-x509" "-keyout" "rootCA.key" "-out" "rootCA.crt" "-days" "$Validity" "-passout" "pass:$password"
@@ -320,7 +322,7 @@ function Generate-NodeCertificates {
 		& "$keytool" "-keystore" "$i-node-keystore.jks" "-alias" "rootCA" "-importcert" "-file" $rootCAcrt "-keypass" "$keystorePassword" "-storepass" "$keystorePassword" "-noprompt"
 
 		Write-Host "Generating new key pair for node: $i"
-		& "$keytool" "-genkeypair" "-keyalg" "RSA" "-alias" "$i" "-keystore" "$i-node-keystore.jks" "-storepass" "$keystorePassword" "-keypass" "$keystorePassword" "-validity" "$Validity" "-keysize" "$KeySize" "-dname" "CN=$i, OU=$ClusterName, O=$Organization, C=BE" "-ext" "$($sans.ToString())"
+		& "$keytool" "-genkeypair" "-keyalg" "RSA" "-alias" "$i" "-keystore" "$i-node-keystore.jks" "-storepass" "$keystorePassword" "-keypass" "$keystorePassword" "-validity" "$Validity" "-keysize" "$KeySize" "-dname" "CN=$i, OU=$ClusterName, O=$Organization, C=US" "-ext" "$($sans.ToString())"
 
 		Write-Host "Creating signing request"
 		& "$keytool" "-keystore" "$i-node-keystore.jks" "-alias" "$i" "-certreq" "-file" "$i.csr" "-keypass" "$keystorePassword" "-storepass" "$keystorePassword" 
@@ -338,11 +340,11 @@ function Generate-NodeCertificates {
 
 		# Debugging: Log the certificates for this node
 		#Write-Host "Certificates in node-keystore for $i:"
-		#& "$keytool -list -keystore $i-node-keystore.jks -storepass $Password"
+		#& "$keytool -list -keystore $i-node-keystore.jks -storepass $password"
 
 		# Debugging: Create keystore with public cert (mostly for CQL clients DevCenter)
 		# Write-Host "Creating public truststore for clients"
-		# & "$keytool" "-keystore" "$i-public-truststore.jks" "-alias" "$i" "-importcert" "-file" "$i-public-key.cer" "-keypass" "$Password" "-storepass" "$Password" "-noprompt"
+		# & "$keytool" "-keystore" "$i-public-truststore.jks" "-alias" "$i" "-importcert" "-file" "$i-public-key.cer" "-keypass" "$password" "-storepass" "$password" "-noprompt"
 		
 		# Convert to PKCS#12, usable for ElasticSearch/OpenSearch and DataMiner HTTPS
 		Write-Host "Creating PKCS#12 from JKS for $i"
@@ -385,14 +387,14 @@ function Generate-Admin-Certificate{
 	"[ req ]
 	distinguished_name  = req_distinguished_name
 	prompt              = no
-	output_password     = `"$Password`"
+	output_password     = `"$password`"
 	default_bits        = $KeySize
 
 	[ req_distinguished_name ]
-	C     = BE
+	C     = US
 	O     = $Organization
-	CN    = Admin
-	OU    = `"$ClusterName`"" | Out-File -Encoding "UTF8" Admin.conf
+	OU    = `"$ClusterName`"
+	CN    = Admin"  | Out-File -Encoding "UTF8" Admin.conf
 
 
 	# generate new keypair
@@ -461,24 +463,24 @@ function Generate-Password {
 		[string]$ArtifactDescription = "certificates and truststores"
 	)
 
-    $Password = $null
+    $password = $null
     
     $GeneratePassword = Read-Host "Do you want me to automatically generate a secure password for the $ArtifactDescription (instead of manually entering one)? [Default: y, Options: y|n]"
 	if($GeneratePassword -ine "n"){
-		$Password = & "$openssl" "rand" "-hex" "20"
-		Write-Host -ForegroundColor Green "Generated password for the $ArtifactDescription is: $Password"
+		$password = & "$openssl" "rand" "-hex" "20"
+		Write-Host -ForegroundColor Green "Generated password for the $ArtifactDescription is: $password"
 	}
 	else {
-		$Password = Read-Host "Please enter a password for the $ArtifactDescription [Min length: 10]"
+		$password = Read-Host "Please enter a password for the $ArtifactDescription [Min length: 10]"
 		$Confirmation = Read-Host "Please re-enter the password"
-		While($Password -cne $Confirmation -or $Password.Length -lt 10){
+		While($password -cne $Confirmation -or $password.Length -lt 10){
 			Write-Host "The passwords did not match or it is shorter then 10 characters"
-			$Password = Read-Host "Please enter a password for the $ArtifactDescription"
+			$password = Read-Host "Please enter a password for the $ArtifactDescription"
 			$Confirmation = Read-Host "Please re-enter the password"
 		}
 	}
 
-    return $Password
+    return $password
 }
 
 # Main Function
