@@ -190,15 +190,13 @@ function Create-New-RootCA{
 	default_bits        = $KeySize
 
 	[ req_distinguished_name ]
-	C     = US
-	O     = USEI
-	CN    = DataminerRootCA
+	C     = BE
+	O     = $Organization
+	CN    = rootCA
+	OU    = `"$ClusterName`"
 	
 	[ ext ]
-	basicConstraints = critical,CA:TRUE
-	keyUsage                = critical, keyCertSign, cRLSign
-	subjectKeyIdentifier    = hash
-	authorityKeyIdentifier  = keyid:always, issuer" | Out-File -Encoding "UTF8" rootCA.conf
+	basicConstraints = critical,CA:TRUE" | Out-File -Encoding "UTF8" rootCA.conf
 
 	# Create a new Root CA certificate and store the private key in rootCA.key, public key in rootCA.crt
 	& "$openssl" "req" "-config" "rootCA.conf" "-new" "-x509" "-keyout" "rootCA.key" "-out" "rootCA.crt" "-days" "$Validity" "-passout" "pass:$password"
@@ -322,7 +320,7 @@ function Generate-NodeCertificates {
 		& "$keytool" "-keystore" "$i-node-keystore.jks" "-alias" "rootCA" "-importcert" "-file" $rootCAcrt "-keypass" "$keystorePassword" "-storepass" "$keystorePassword" "-noprompt"
 
 		Write-Host "Generating new key pair for node: $i"
-		& "$keytool" "-genkeypair" "-keyalg" "RSA" "-alias" "$i" "-keystore" "$i-node-keystore.jks" "-storepass" "$keystorePassword" "-keypass" "$keystorePassword" "-validity" "$Validity" "-keysize" "$KeySize" "-dname" "CN=$i, OU=$ClusterName, O=$Organization, C=US" "-ext" "$($sans.ToString())"
+		& "$keytool" "-genkeypair" "-keyalg" "RSA" "-alias" "$i" "-keystore" "$i-node-keystore.jks" "-storepass" "$keystorePassword" "-keypass" "$keystorePassword" "-validity" "$Validity" "-keysize" "$KeySize" "-dname" "CN=$i, OU=$ClusterName, O=$Organization, C=BE" "-ext" "$($sans.ToString())"
 
 		Write-Host "Creating signing request"
 		& "$keytool" "-keystore" "$i-node-keystore.jks" "-alias" "$i" "-certreq" "-file" "$i.csr" "-keypass" "$keystorePassword" "-storepass" "$keystorePassword" 
@@ -391,10 +389,10 @@ function Generate-Admin-Certificate{
 	default_bits        = $KeySize
 
 	[ req_distinguished_name ]
-	C     = US
+	C     = BE
 	O     = $Organization
-	OU    = `"$ClusterName`"
-	CN    = Admin"  | Out-File -Encoding "UTF8" Admin.conf
+	CN    = Admin
+	OU    = `"$ClusterName`"" | Out-File -Encoding "UTF8" Admin.conf
 
 
 	# generate new keypair
