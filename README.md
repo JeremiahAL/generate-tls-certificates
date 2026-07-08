@@ -1,6 +1,6 @@
 # TLS Encryption Configuration Script
 
-These scripts streamline the creation of TLS certificates to ensure the security of **Cassandra**, **ElasticSearch**, **OpenSearch**, or **NATS** instances. They automate the entire process, encompassing the generation of a Root Certificate Authority (CA) certificate, node-specific certificates, and seamless certificate management tasks.
+These scripts streamline the creation of TLS certificates to ensure the security of **Cassandra**, **ElasticSearch**, **OpenSearch**, **NATS**, or **DataMiner** instances. They automate the entire process, encompassing the generation of a Root Certificate Authority (CA) certificate, node-specific certificates, and seamless certificate management tasks.
 
 ## Prerequisites
 
@@ -70,7 +70,7 @@ Keytool is shipped alongside with Java. ElasticSearchg and Cassandra installatio
 
 ## Features
 
-- **Organization Type:** Choose the instance type for which you want to generate certificates (Cassandra, Elastic, OpenSearch, NATS).
+- **Organization Type:** Choose the instance type for which you want to generate certificates (Cassandra, Elastic, OpenSearch, NATS, DataMiner).
 - **Cleanup:** Option to clean up files generated in previous executions.
 - **Cluster Information:** Enter the name of your cluster and handle non-ASCII characters appropriately.
 - **Certificate Options:** Set the validity period for the certificates.
@@ -80,15 +80,15 @@ Keytool is shipped alongside with Java. ElasticSearchg and Cassandra installatio
 - **Root CA Certificate:** Choose to use an existing root certificate or generate a new one.
 - **Certificate Generation:** Automatically generates certificates for each node in the cluster.
 - **Subject Alternative Names (SANs):** Specify additional SANs for each node.
-- **Password Handling:** Option to automatically generate a secure password or manually enter one.
-- **Public Key Exchange:** Add public keys of every node to the keystore of every other node.
+- **Password Handling:** Option to generate or enter separate passwords for the root CA private key and the per-node keystore/PKCS#12 output.
+- **PKCS#12 Output:** Produces a single final `*-node-keystore.p12` per node, suitable for node deployment and DataMiner HTTPS certificate usage.
 - **Cleanup Unused Files:** Remove unnecessary files generated during the execution.
 - **Certificates Information:** Display information about the generated certificates, keystore files, and passwords.
 
 > [!IMPORTANT]
 >
 > - Ensure the root CA certificate (rootCA.crt) is trusted on every client. **If a password is generated, note it down for future reference.**
-> - Copy the generated keystore files (*-node-keystore.p12) to their respective nodes.
+> - Copy the generated PKCS#12 files (`*-node-keystore.p12`) to their respective nodes or DataMiner servers.
 
 ## License
 

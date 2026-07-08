@@ -24,12 +24,12 @@ class Config {
     [string] GetOrganization() {
 		$organizationInput = ""
 		while ($true) {
-			$organizationInput = Read-Host "Which instance are you generating certificates for? [Default: Cassandra, Options: Cassandra|Elastic|OpenSearch|NATS]"
+    		$organizationInput = Read-Host "Which instance are you generating certificates for? [Default: Cassandra, Options: Cassandra|Elastic|OpenSearch|NATS|DataMiner]"
 			if($organizationInput -eq ""){
 				$organizationInput = "Cassandra"
 			}
-			if($organizationInput -notin @("Cassandra","Elastic","OpenSearch", "NATS")){
-				Write-Host -ForegroundColor red "Invalid input: Instance should be either Cassandra, Elastic, OpenSearch or NATS"
+    		if($organizationInput -notin @("Cassandra","Elastic","OpenSearch", "NATS", "DataMiner")){
+    			Write-Host -ForegroundColor red "Invalid input: Instance should be either Cassandra, Elastic, OpenSearch, NATS, or DataMiner"
 			}else{
 				break
 			}
@@ -177,14 +177,16 @@ function Clean-WorkingDirectory {
 
 # Function to generate a new Root Certificate using OpenSSL tool
 function Create-New-RootCA{
-	param()
+	param(
+		[string]$password
+	)
 	
 	Write-Host "Generating the root certificate"
 	"[ req ]
 	distinguished_name  = req_distinguished_name
 	x509_extensions		= ext
 	prompt              = no
-	output_password     = `"$Password`"
+	output_password     = `"$password`"
 	default_bits        = $KeySize
 
 	[ req_distinguished_name ]
@@ -197,7 +199,7 @@ function Create-New-RootCA{
 	basicConstraints = critical,CA:TRUE" | Out-File -Encoding "UTF8" rootCA.conf
 
 	# Create a new Root CA certificate and store the private key in rootCA.key, public key in rootCA.crt
-	& "$openssl" "req" "-config" "rootCA.conf" "-new" "-x509" "-nodes" "-keyout" "rootCA.key" "-out" "rootCA.crt" "-days" "$Validity"
+	& "$openssl" "req" "-config" "rootCA.conf" "-new" "-x509" "-keyout" "rootCA.key" "-out" "rootCA.crt" "-days" "$Validity" "-passout" "pass:$password"
 }
 
 # Function to generate root certificate
@@ -224,8 +226,8 @@ function Generate-RootCertificate {
     	}
         return [RootCA]::new($rootCAcrt, $rootCAkey, $rootCApassword)
 	}else{
-		$generatedPassword = Generate-Password
-		Create-New-RootCA
+		$generatedPassword = Generate-Password -ArtifactDescription "root CA private key"
+		Create-New-RootCA -password $generatedPassword
         return [RootCA]::new("rootCA.crt", "rootCA.key", $generatedPassword)
 	}
 }
@@ -286,7 +288,8 @@ function Generate-NodeCertificates {
 		[string]$organization,
         [array]$hostNames,
         [string]$resolveHostName,
-        [string]$password,
+        [string]$keystorePassword,
+        [string]$rootCApassword,
         [string]$rootCAcrt,
         [string]$rootCAkey
     )
@@ -314,28 +317,24 @@ function Generate-NodeCertificates {
 		
 		# Importing the public Root CA certificate in node keystore
 		Write-Host "Importing Root CA certificate in node keystore"
-		& "$keytool" "-keystore" "$i-node-keystore.jks" "-alias" "rootCA" "-importcert" "-file" $rootCAcrt "-keypass" "$password" "-storepass" "$password" "-noprompt"
+		& "$keytool" "-keystore" "$i-node-keystore.jks" "-alias" "rootCA" "-importcert" "-file" $rootCAcrt "-keypass" "$keystorePassword" "-storepass" "$keystorePassword" "-noprompt"
 
 		Write-Host "Generating new key pair for node: $i"
-		& "$keytool" "-genkeypair" "-keyalg" "RSA" "-alias" "$i" "-keystore" "$i-node-keystore.jks" "-storepass" "$password" "-keypass" "$password" "-validity" "$Validity" "-keysize" "$KeySize" "-dname" "CN=$i, OU=$ClusterName, O=$Organization, C=BE" "-ext" "$($sans.ToString())"
+		& "$keytool" "-genkeypair" "-keyalg" "RSA" "-alias" "$i" "-keystore" "$i-node-keystore.jks" "-storepass" "$keystorePassword" "-keypass" "$keystorePassword" "-validity" "$Validity" "-keysize" "$KeySize" "-dname" "CN=$i, OU=$ClusterName, O=$Organization, C=BE" "-ext" "$($sans.ToString())"
 
 		Write-Host "Creating signing request"
-		& "$keytool" "-keystore" "$i-node-keystore.jks" "-alias" "$i" "-certreq" "-file" "$i.csr" "-keypass" "$password" "-storepass" "$password" 
+		& "$keytool" "-keystore" "$i-node-keystore.jks" "-alias" "$i" "-certreq" "-file" "$i.csr" "-keypass" "$keystorePassword" "-storepass" "$keystorePassword" 
 
 		# Add both hostname and IP as subject alternative name, write this configuration to a temp file
 		"$($subjectAltNames)" | Out-File -Encoding "UTF8" "${i}.conf"
 
 		# Sign the node certificate with the private key of the rootCA
 		Write-Host "Signing certificate with Root CA certificate"
-		& "$openssl" "x509" "-req" "-CA" $rootCAcrt "-CAkey" $rootCAkey "-in" "$i.csr" "-out" "$i.crt_signed" "-days" "$Validity" "-CAcreateserial" "-passin" "pass:$password" "-extfile" "$i.conf"
+		& "$openssl" "x509" "-req" "-CA" $rootCAcrt "-CAkey" $rootCAkey "-in" "$i.csr" "-out" "$i.crt_signed" "-days" "$Validity" "-CAcreateserial" "-passin" "pass:$rootCApassword" "-extfile" "$i.conf"
 
 		# Import the signed certificate in the node key store
 		Write-Host "Importing signed certificate for $i in node keystore"
-		& "$keytool" "-keystore" "$i-node-keystore.jks" "-alias" "$i" "-importcert" "-file" "$i.crt_signed" "-keypass" "$password" "-storepass" "$password" "-noprompt"
-
-		# Export the public key for every node
-		Write-Host "Exporting public key for $i"
-		& "$keytool" "-exportcert" "-alias" "$i" "-keystore" "$i-node-keystore.jks" "-file" "$i-public-key.cer" "-storepass" "$password"
+		& "$keytool" "-keystore" "$i-node-keystore.jks" "-alias" "$i" "-importcert" "-file" "$i.crt_signed" "-keypass" "$keystorePassword" "-storepass" "$keystorePassword" "-noprompt"
 
 		# Debugging: Log the certificates for this node
 		#Write-Host "Certificates in node-keystore for $i:"
@@ -345,15 +344,15 @@ function Generate-NodeCertificates {
 		# Write-Host "Creating public truststore for clients"
 		# & "$keytool" "-keystore" "$i-public-truststore.jks" "-alias" "$i" "-importcert" "-file" "$i-public-key.cer" "-keypass" "$Password" "-storepass" "$Password" "-noprompt"
 		
-		# Convert to PKCS#12, usable for ElasticSearch/OpenSearch
+		# Convert to PKCS#12, usable for ElasticSearch/OpenSearch and DataMiner HTTPS
 		Write-Host "Creating PKCS#12 from JKS for $i"
-		& "$keytool" "-importkeystore" "-srckeystore" "$i-node-keystore.jks" "-destkeystore" "$i-node-keystore.p12" "-srcstoretype" "JKS" "-deststoretype" "PKCS12" "-srcstorepass" "$password" "-deststorepass" "$password"
+		& "$keytool" "-importkeystore" "-srckeystore" "$i-node-keystore.jks" "-destkeystore" "$i-node-keystore.p12" "-srcstoretype" "JKS" "-deststoretype" "PKCS12" "-srcstorepass" "$keystorePassword" "-deststorepass" "$keystorePassword"
 		
 		# Generating certificate.pem file in case of NATS
 		if ($organization -eq "NATS") {							
 			Write-Host "Generating PEM files"
-			& "$openssl" "pkcs12" "-in" "$i-node-keystore.p12" "-out" "$i-certificate.pem" "-clcerts" "-nokeys" "-passin" "pass:$password"
-			& "$openssl" "pkcs12" "-in" "$i-node-keystore.p12" "-out" "$i-key.pem" "-nocerts" "-nodes" "-passin" "pass:$password"
+			& "$openssl" "pkcs12" "-in" "$i-node-keystore.p12" "-out" "$i-certificate.pem" "-clcerts" "-nokeys" "-passin" "pass:$keystorePassword"
+			& "$openssl" "pkcs12" "-in" "$i-node-keystore.p12" "-out" "$i-key.pem" "-nocerts" "-nodes" "-passin" "pass:$keystorePassword"
 
 			# Read the content of the files
 			$certFileContent = Get-Content -Path "$i-certificate.pem" -Raw
@@ -409,31 +408,9 @@ function Generate-Admin-Certificate{
 	& "$openssl" "x509" "-req" "-CA" $rootCAcrt "-CAkey" $rootCAkey "-in" "admin.csr" "-out" "admin.pem" "-days" "$Validity" "-CAcreateserial" "-passin" "pass:$password"
 }
 
-# Function to add public keys to keystore of every other node
-function Add-PublicKeysToKeystore {
-    param(
-        [array]$hostNames,
-        [string]$password
-    )
-
-    if ($HostNames.Length -ge 2) {
-        Write-Host "Adding the public key of every node to every other node..."
-        foreach ($i in $HostNames) {
-            foreach ($j in $HostNames) {
-                if ($i -ceq $j) {
-                    continue
-                }
-
-                & "$keytool" "-keystore" "$i-node-keystore.p12" "-alias" "$j" "-importcert" "-file" "$j-public-key.cer" "-keypass" "$Password" "-storepass" "$Password" "-noprompt"
-            }
-        }
-    }
-}
-
 # Function to clean up and provide final instructions
 function Clean-Up-And-Instructions {
     param(
-        [string]$password,
         [string]$rootCAcrt,
         [string]$rootCAkey
     )
@@ -450,7 +427,7 @@ function Clean-Up-And-Instructions {
 	Write-Host -ForegroundColor Green "Please make sure the $rootCAcrt is trusted on every client"
 	
 	Write-Host
-	Write-Host -ForeGroundColor Green "Copy the following keystores to the matching node:"
+	Write-Host -ForeGroundColor Green "Copy the following PKCS#12 files to the matching node or DataMiner server:"
 	Get-ChildItem -File "*-node-keystore.p12" | foreach-object { Write-Host "> $_"}
 
 	Write-Host
@@ -480,19 +457,23 @@ function Log-ConfigurationDetails {
 
 # Function to generate secure certificate password
 function Generate-Password {
+	param(
+		[string]$ArtifactDescription = "certificates and truststores"
+	)
+
     $Password = $null
     
-    $GeneratePassword = Read-Host "Do you want me to automatically generate a secure certificate password (instead of manually entering one)? [Default: y, Options: y|n]"
+    $GeneratePassword = Read-Host "Do you want me to automatically generate a secure password for the $ArtifactDescription (instead of manually entering one)? [Default: y, Options: y|n]"
 	if($GeneratePassword -ine "n"){
 		$Password = & "$openssl" "rand" "-hex" "20"
-		Write-Host -ForegroundColor Green "Generated password is: $Password"
+		Write-Host -ForegroundColor Green "Generated password for the $ArtifactDescription is: $Password"
 	}
 	else {
-		$Password = Read-Host "Please enter a password for the certificates and truststores [Min length: 10]"
+		$Password = Read-Host "Please enter a password for the $ArtifactDescription [Min length: 10]"
 		$Confirmation = Read-Host "Please re-enter the password"
 		While($Password -cne $Confirmation -or $Password.Length -lt 10){
 			Write-Host "The passwords did not match or it is shorter then 10 characters"
-			$Password = Read-Host "Please enter a password for the certificates and truststores"
+			$Password = Read-Host "Please enter a password for the $ArtifactDescription"
 			$Confirmation = Read-Host "Please re-enter the password"
 		}
 	}
@@ -523,14 +504,14 @@ function Main{
     # Certificates phase
     Log-ConfigurationDetails -organization $Organization -clusterNames $ClusterName -hostNames $Hostnames -validity $Validity -keysize $Keysize -resolveHostName $ResolveHostName
 	$rootCA = Generate-RootCertificate -organization $Organization -clusterName $ClusterName -validity $Validity -keySize $Keysize
-	Generate-NodeCertificates -organization $Organization -hostNames $HostNames -resolveHostName $ResolveHostName -password $rootCA.Password -rootCAcrt $rootCA.PathCRT -rootCAkey $rootCA.PathKey
-	Add-PublicKeysToKeystore -hostNames $HostNames -password $rootCA.Password
+	$nodeKeystorePassword = Generate-Password -ArtifactDescription "node keystores and PKCS#12 files"
+	Generate-NodeCertificates -organization $Organization -hostNames $HostNames -resolveHostName $ResolveHostName -keystorePassword $nodeKeystorePassword -rootCApassword $rootCA.Password -rootCAcrt $rootCA.PathCRT -rootCAkey $rootCA.PathKey
 
 	if($Organization -eq "OpenSearch"){
 		Generate-Admin-Certificate -password $rootCA.Password -rootCAcrt $rootCA.PathCRT -rootCAkey $rootCA.PathKey
 	}
 
-	Clean-Up-And-Instructions -password $rootCA.Password -rootCAcrt $rootCA.PathCRT -rootCAkey $rootCA.PathKey
+	Clean-Up-And-Instructions -rootCAcrt $rootCA.PathCRT -rootCAkey $rootCA.PathKey
 }
 
 Main
