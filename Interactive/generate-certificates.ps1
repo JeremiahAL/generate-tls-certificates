@@ -504,7 +504,8 @@ function Main{
 	Generate-NodeCertificates -organization $Organization -hostNames $HostNames -resolveHostName $ResolveHostName -keystorePassword $nodeKeystorePassword -rootCApassword $rootCA.Password -rootCAcrt $rootCA.PathCRT -rootCAkey $rootCA.PathKey
 
 	if($Organization -eq "OpenSearch"){
-		Generate-Admin-Certificate -password $rootCA.Password -rootCAcrt $rootCA.PathCRT -rootCAkey $rootCA.PathKey
+		$adminKeyPassword = Generate-Password -ArtifactDescription "OpenSearch admin certificate"
+		Generate-Admin-Certificate -password $rootCA.Password -adminKeyPassword $adminKeyPassword -rootCAcrt $rootCA.PathCRT -rootCAkey $rootCA.PathKey
 	}
 
 	Clean-Up-And-Instructions -rootCAcrt $rootCA.PathCRT -rootCAkey $rootCA.PathKey
