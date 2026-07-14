@@ -299,15 +299,25 @@ function Generate-NodeCertificates {
 
 		# Add SANs (Subject Alternative Names)
 		$sans = [System.Text.StringBuilder]::new("san=dns:$i,ip:$nodeIp")
-		$subjectAltNames = [System.Text.StringBuilder]::new("subjectAltName=DNS:$i,IP:$NodeIP")
+		$altNamesEntries = [System.Collections.ArrayList]::new()
+		$dnsCount = 0
+		$ipCount = 0
+
+		$dnsCount++
+		[void]$altNamesEntries.Add("DNS.$dnsCount = $i")
+		$ipCount++
+		[void]$altNamesEntries.Add("IP.$ipCount = $NodeIP")
+
 		foreach($san in $sansArr)
 		{
 			if (IsIpAddress $san) {
 				$sans.Append(",ip:$san")
-				$subjectAltNames.Append(",IP:$san")
+				$ipCount++
+				[void]$altNamesEntries.Add("IP.$ipCount = $san")
 			} else {
 				$sans.Append(",dns:$san")
-				$subjectAltNames.Append(",DNS:$san")
+				$dnsCount++
+				[void]$altNamesEntries.Add("DNS.$dnsCount = $san")
 			}
 		}
 		
@@ -321,12 +331,19 @@ function Generate-NodeCertificates {
 		Write-Host "Creating signing request"
 		& "$keytool" "-keystore" "$i-node-keystore.jks" "-alias" "$i" "-certreq" "-file" "$i.csr" "-keypass" "$keystorePassword" "-storepass" "$keystorePassword" 
 
-		# Add both hostname and IP as subject alternative name, write this configuration to a temp file
-		"$($subjectAltNames)" | Out-File -Encoding "UTF8" "${i}.conf"
+		# Write the req_extensions (basicConstraints, keyUsage, extendedKeyUsage, SANs) to a temp config file
+		"[ v3_req ]
+basicConstraints = critical, CA:false
+keyUsage = critical, keyEncipherment, digitalSignature
+extendedKeyUsage = serverAuth, clientAuth
+subjectAltName = @alt_names
+
+[ alt_names ]
+$($altNamesEntries -join "`n")" | Out-File -Encoding "UTF8" "${i}.conf"
 
 		# Sign the node certificate with the private key of the rootCA
 		Write-Host "Signing certificate with Root CA certificate"
-		& "$openssl" "x509" "-req" "-CA" $rootCAcrt "-CAkey" $rootCAkey "-in" "$i.csr" "-out" "$i.crt_signed" "-days" "$Validity" "-CAcreateserial" "-passin" "pass:$rootCApassword" "-extfile" "$i.conf"
+		& "$openssl" "x509" "-req" "-CA" $rootCAcrt "-CAkey" $rootCAkey "-in" "$i.csr" "-out" "$i.crt_signed" "-days" "$Validity" "-CAcreateserial" "-passin" "pass:$rootCApassword" "-extfile" "$i.conf" "-extensions" "v3_req"
 
 		# Import the signed certificate in the node key store
 		Write-Host "Importing signed certificate for $i in node keystore"
