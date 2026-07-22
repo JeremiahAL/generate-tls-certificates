@@ -442,6 +442,7 @@ function Clean-Up-And-Instructions {
 	Write-Host
 	Write-Host -ForeGroundColor Green "Please secure all passwords and keep the following key files PRIVATE:"
 	Get-ChildItem -File $rootCAkey | foreach-object { Write-Host "> $_"}
+	Get-ChildItem -File "admin-key.pem" -ErrorAction SilentlyContinue | foreach-object { Write-Host "> $_"}
 
 	Write-Host
 	Write-Host -ForeGroundColor Green "Copy the following PKCS#12 files to the matching database node or DataMiner server:"
