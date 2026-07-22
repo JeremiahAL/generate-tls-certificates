@@ -323,7 +323,7 @@ function Generate-NodeCertificates {
 		
 		# Importing the public Root CA certificate in node keystore
 		Write-Host "Importing Root CA certificate in node keystore"
-		& "$keytool" "-keystore" "$i-node-keystore.jks" "-alias" "rootCA" "-importcert" "-file" $rootCAcrt "-keypass" "$keystorePassword" "-storepass" "$keystorePassword" "-noprompt"
+		& "$keytool" "-keystore" "$i-node-keystore.jks" "-alias" "DataminerRootCA" "-importcert" "-file" $rootCAcrt "-keypass" "$keystorePassword" "-storepass" "$keystorePassword" "-noprompt"
 
 		Write-Host "Generating new key pair for node: $i"
 		& "$keytool" "-genkeypair" "-keyalg" "RSA" "-alias" "$i" "-keystore" "$i-node-keystore.jks" "-storepass" "$keystorePassword" "-keypass" "$keystorePassword" "-validity" "$Validity" "-keysize" "$KeySize" "-dname" "CN=$i, OU=$ClusterName, O=$Organization, C=US" "-ext" "$($sans.ToString())"
@@ -440,12 +440,12 @@ function Clean-Up-And-Instructions {
 	Write-Host -ForegroundColor Green "Please make sure the $rootCAcrt is trusted on every client"
 	
 	Write-Host
-	Write-Host -ForeGroundColor Green "Copy the following PKCS#12 files to the matching node or DataMiner server:"
-	Get-ChildItem -File "*-node-keystore.p12" | foreach-object { Write-Host "> $_"}
+	Write-Host -ForeGroundColor Green "Keep the following key files PRIVATE:"
+	Get-ChildItem -File $rootCAkey | foreach-object { Write-Host "> $_"}
 
 	Write-Host
-	Write-Host -ForeGroundColor Green "Keep the following files PRIVATE:"
-	Get-ChildItem -File $rootCAkey | foreach-object { Write-Host "> $_"}
+	Write-Host -ForeGroundColor Green "Copy the following PKCS#12 files to the matching database node or DataMiner server:"
+	Get-ChildItem -File "*-node-keystore.p12" | foreach-object { Write-Host "> $_"}
 }
 
 # Function to log the configuration details
