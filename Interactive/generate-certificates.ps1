@@ -395,7 +395,7 @@ function Generate-Admin-Certificate{
         [string]$rootCAcrt,
         [string]$rootCAkey
     )
-	Write-Host "Generating the Admin certificate"
+	Write-Host "Generating the OpenSearch Admin certificate"
 	"[ req ]
 	distinguished_name  = req_distinguished_name
 	prompt              = no
@@ -405,7 +405,7 @@ function Generate-Admin-Certificate{
 	C     = US
 	O     = $Organization
 	OU    = `"$ClusterName`"
-	CN    = Admin" | Out-File -Encoding "UTF8" Admin.conf
+	CN    = OpenSearch Admin" | Out-File -Encoding "UTF8" Admin.conf
 
 
 	# generate new keypair
@@ -440,7 +440,7 @@ function Clean-Up-And-Instructions {
 	Write-Host -ForegroundColor Green "Please make sure the $rootCAcrt is trusted on every client"
 	
 	Write-Host
-	Write-Host -ForeGroundColor Green "Keep the following key files PRIVATE:"
+	Write-Host -ForeGroundColor Green "Please secure all passwords and keep the following key files PRIVATE:"
 	Get-ChildItem -File $rootCAkey | foreach-object { Write-Host "> $_"}
 
 	Write-Host
